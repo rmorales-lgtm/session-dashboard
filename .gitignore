@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime data lives in ~/.local/share/session-dashboard, but never commit it if it ends up here
+history.json
+move-queue.json
+*.queue.json
+config-backups/
+
+# Temporary and backup files (editor, atomic writes, hand-made backups)
+*.tmp
+*.bak
+*.orig
+*.rej
+*.swp
+*~
+*.before-*
+
+# Test and debug output (screenshots, fake states, scratch pages)
+*.png
+*.log
+dbg.html
+darktest/
+ttest/
+scratch/
+
+# Secrets: the dashboard needs none, keep it that way
+.env
+.env.*
+*.key
+*.pem
+secrets.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
