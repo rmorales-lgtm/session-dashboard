@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ccd_session_mgmt__archive_session",
+      "mcp__ccd_sidebar__move_sessions",
+      "mcp__ccd_session_mgmt__send_message"
+    ]
+  }
+}
