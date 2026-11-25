@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local dashboard for Claude Desktop (Code tab) sessions. Read-only on Claude's files.
 
-Run:  python3 server.py [port]      (default 8787)  ->  http://localhost:8787
+Run:  python3 server.py [port]      (default: "port" in config.json, 8787)
 
 Sources (all local):
   * Desktop app session files + sidebar sections: <Windows>/AppData/Roaming/Claude (WSL path auto-detected)
@@ -15,8 +15,11 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # `python -I` does not add the script folder
+from dashcfg import CFG, find_app_dir, pid_alive
+
 HOME = os.path.expanduser("~")
-TZ = ZoneInfo("America/Toronto")
+TZ = ZoneInfo(CFG["timezone"]) if CFG["timezone"] else None      # None = this computer's local time
 HIST_DIR = f"{HOME}/.local/share/session-dashboard"
 HIST = f"{HIST_DIR}/history.json"
 GAP_CAP = 15 * 60          # a gap between two transcript events counts up to 15 min
@@ -24,25 +27,19 @@ POLL = 60                  # seconds between background snapshots (catches secti
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOCK = threading.Lock()
 
-# Section name -> (key, label shown on the dashboard). Works with the old and the new names.
+# Sidebar section name -> stage key. The names come from config.json ("sections"); the older names of the first
+# version of the dashboard still work so that nothing breaks after a rename.
 STAGE_ALIASES = {
     "cr": "review_others", "reviewing for others": "review_others",
     "in analysis": "analysis", "in po validation": "po", "in dev": "dev",
-    "in cr": "my_cr", "my tickets in cr": "my_cr", "completed": "completed", "done": "completed",
-    "peer code reviews": "review_others", "story analysis": "analysis", "po sign-off": "po",
-    "development": "dev", "my prs in review": "my_cr",
+    "in cr": "my_cr", "my tickets in cr": "my_cr", "done": "completed",
 }
+for _key, _names in CFG["sections"].items():
+    for _name in _names:
+        STAGE_ALIASES[_name.strip().lower()] = _key
 STAGE_ORDER = ["review_others", "analysis", "po", "dev", "my_cr"]
-STAGE_LABEL = {"review_others": "Peer code reviews", "analysis": "Story analysis",
-               "po": "PO sign-off", "dev": "Development", "my_cr": "My PRs in review", "completed": "Completed",
-               "none": "No section"}
-
-
-def find_app_dir():
-    for base in glob.glob("/mnt/c/Users/*/AppData/Roaming/Claude") + [f"{HOME}/.config/Claude"]:
-        if os.path.exists(f"{base}/claude_desktop_config.json"):
-            return base
-    return None
+STAGE_LABEL = {k: (CFG["sections"].get(k) or [k])[0] for k in STAGE_ORDER + ["completed"]}
+STAGE_LABEL["none"] = "No section"
 
 
 APP = find_app_dir()
@@ -89,7 +86,7 @@ def read_proc_status():
     out = {}
     for f in glob.glob(f"{HOME}/.claude/sessions/*.json"):
         d = jload(f)
-        if not d or not d.get("hostSessionId") or not os.path.exists(f"/proc/{d.get('pid')}"):
+        if not d or not d.get("hostSessionId") or not pid_alive(d.get("pid")):
             continue
         out[d["hostSessionId"]] = {"status": d.get("status") or "idle", "waitingFor": d.get("waitingFor")}
     return out
@@ -261,10 +258,11 @@ def save_history(h):
 def _start_match(kind, n, t):
     """Does the title of a new session belong to the review of PR n / the implementation of ticket n?"""
     n = re.escape(n)
+    sk = re.escape(CFG["skills"].get("review" if kind == "review" else "implement", ""))
     if kind == "review":
-        return bool(re.match(rf"PR\s+{n}\b", t, re.I) or re.search(rf"my-code-review\D{{0,40}}?\b{n}\b", t, re.I))
-    return bool(re.match(rf"(?:\[[^\]]+\]\s*)?(?:/?implement\s+)?#?{n}\b", t, re.I)
-                or re.search(rf"implement\D{{0,40}}?\b{n}\b", t, re.I))
+        return bool(re.match(rf"PR\s+{n}\b", t, re.I) or re.search(rf"{sk}\D{{0,40}}?\b{n}\b", t, re.I))
+    return bool(re.match(rf"(?:\[[^\]]+\]\s*)?(?:/?{sk}\s+)?#?{n}\b", t, re.I)
+                or re.search(rf"{sk}\D{{0,40}}?\b{n}\b", t, re.I))
 
 
 def snapshot():
@@ -396,7 +394,7 @@ def week_bounds(offset=0):
     return mon, mon + timedelta(days=6)
 
 
-ORG = os.environ.get("DASHBOARD_ADO_ORG", "").rstrip("/")   # e.g. https://dev.azure.com/<organization>; empty = no Azure DevOps links
+ORG = CFG["adoOrg"]            # https://dev.azure.com/<organization>; empty = no Azure DevOps links
 
 
 def item_url(r):
@@ -565,7 +563,9 @@ def payload(offset=0):
 
     return {"now": now, "app": APP, "days": days, "week": week, "weekTotals": totals,
             "weekStart": mon.isoformat(), "weekEnd": sun.isoformat(), "offset": offset,
-            "projectsDir": os.path.join(HOME, "dev", "projects"), "worker": worker_running(), "workerPrompt": WORKER_PROMPT, "homeDir": HOME, "pending": [{"action": x.get("action", "move"), "id": x["id"], "title": x.get("title"), "approved": bool(x.get("approved")), "error": x.get("error"), "label": x.get("label")} for x in read_queue() if x.get("action", "move") in ("move", "archive")], "board": board, "done": done, "others": others, "stageLabels": STAGE_LABEL, "stageOrder": STAGE_ORDER}
+            "projectsDir": CFG["projectsDir"],
+            "start": {k: {"skill": CFG["skills"][k], "template": CFG["startMessages"][k],
+                          "section": STAGE_LABEL["review_others" if k == "review" else "dev"]} for k in ("review", "implement")}, "worker": worker_running(), "workerPrompt": WORKER_PROMPT, "homeDir": HOME, "pending": [{"action": x.get("action", "move"), "id": x["id"], "title": x.get("title"), "approved": bool(x.get("approved")), "error": x.get("error"), "label": x.get("label")} for x in read_queue() if x.get("action", "move") in ("move", "archive")], "board": board, "done": done, "others": others, "stageLabels": STAGE_LABEL, "stageOrder": STAGE_ORDER}
 
 
 QUEUE = f"{HIST_DIR}/move-queue.json"
@@ -718,7 +718,7 @@ def poller():
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8787
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else CFG["port"]
     if not APP:
         print("Claude Desktop data folder not found")
     threading.Thread(target=poller, daemon=True).start()

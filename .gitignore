@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 venv/
 
+# Your own settings (copy of config.example.json)
+config.json
+
 # Runtime data lives in ~/.local/share/session-dashboard, but never commit it if it ends up here
 history.json
 move-queue.json

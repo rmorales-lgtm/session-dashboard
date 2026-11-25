@@ -10,7 +10,10 @@ Send the standard 'Something new?' text for PING; then run mark_many.py once wit
 import datetime, glob, json, os, sys
 Q = os.environ.get("QUEUE_FILE", os.path.expanduser("~/.local/share/session-dashboard/move-queue.json"))
 ALL = "--all" in sys.argv
-APP = glob.glob("/mnt/c/Users/*/AppData/Roaming/Claude/claude-code-sessions/*/*")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dashcfg import find_app_dir
+_app = find_app_dir()
+APP = glob.glob(f"{_app}/claude-code-sessions/*/*") if _app else []
 
 
 def app_session(sid):

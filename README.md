@@ -7,6 +7,31 @@ you (a question to answer, unread results), and keeps a weekly record of the Use
 * Code: this folder, `~/session-dashboard` (WSL Ubuntu; from Windows: `\\wsl.localhost\Ubuntu\home\<you>\session-dashboard`)
 * It is **not** in a git repository yet.
 
+## Installing (new machine or a partner)
+
+**Requirements**
+* **Claude Desktop** with the Code tab, a version that supports `claude://code/new` links and the session tools
+  (`send_message`, `move_sessions`, `archive_session`).
+* **Python 3.9 or newer** (standard library only) on Linux or **WSL** (the Windows app with the dashboard in WSL is the tested setup).
+  macOS should work (it reads `~/Library/Application Support/Claude`) but is untested; native Windows is not supported.
+* Optional: the `az` CLI (PR links, with `adoOrg`), `node` and Chrome (only to develop the page).
+
+**Install**
+```bash
+git clone https://github.com/<you>/session-dashboard.git ~/session-dashboard
+cd ~/session-dashboard
+./install.sh              # config.json, the two skills, and a systemd user service (use --no-service to skip it)
+$EDITOR config.json       # your section names, skills, time zone, folders (see "Configuration")
+systemctl --user restart session-dashboard
+```
+Then open http://localhost:8787 and click **Start worker** in the header (section 5). Without systemd, run
+`python3 server.py`. `./install.sh --print-service` shows the unit it would install; the installer never overwrites a
+config.json, a skill link or a service file that differs from its own.
+
+**Make it yours** (a partner's machine is not the author's): the sidebar sections of Claude Desktop must match the names in
+`config.json` (`sections`), and the **+** buttons ask Claude to use the skills named in `skills`: set your own review and
+implementation skills there (or leave them if you have none and do not use the buttons).
+
 ## 1. Quick start
 
 The server is a systemd user service that starts with WSL, so normally there is nothing to do: open the page.
@@ -19,7 +44,7 @@ journalctl --user -u session-dashboard -n 30   # its log
 
 Run it by hand (for debugging): `python3 server.py [port]` (default 8787).
 
-Skills (used by the worker sessions, see section 5): run `./install-skills.sh` once.
+Skills (used by the worker sessions, see section 5): `./install.sh` links them; `./install-skills.sh` does only that.
 
 ## 2. The board
 
@@ -113,9 +138,12 @@ session carries it out.
 | `mark_many.py` | Worker tool: marks requests sent / done (or failed) in one silent call |
 | `ping_watch.py` | Worker tool: prints one line per burst of new requests (run it in a Monitor) |
 | `mark_done.py`, `mark_sent.py` | Older single-request helpers (still work) |
-| `skills/` | `dashboard-queue-worker`, `dashboard-dev` (installed by `install-skills.sh`) |
+| `dashcfg.py` | Reads the configuration (defaults, `config.json`, environment); finds Claude Desktop's data folder |
+| `config.example.json` | Documented settings; `install.sh` copies it to `config.json` (yours, not in git) |
+| `install.sh`, `install-skills.sh`, `session-dashboard.service.template` | Installation |
+| `skills/` | `dashboard-queue-worker`, `dashboard-dev` (linked into `~/.claude/skills`) |
 | `AGENTS.md`, `CLAUDE.md` | Instructions for AI sessions working here |
-| `~/.config/systemd/user/session-dashboard.service` | Runs `python3 -I server.py 8787` |
+| `~/.config/systemd/user/session-dashboard.service` | Runs `python3 -I server.py` (made by `install.sh`) |
 | `~/.local/share/session-dashboard/history.json` | Sessions seen (title, stages, daily minutes, PR links), `muted`, `pendingStarts` |
 | `~/.local/share/session-dashboard/move-queue.json` | Requests for the worker |
 
@@ -128,6 +156,10 @@ There are three things that "run": the server, the **Queue worker** session, and
 Already a service (see section 1). Port 8787 is hard-coded in `server.py` and in the service file.
 
 ### 5.2 The Queue worker (needed for Refresh, Do it, moves and closes)
+
+A worker is a **Claude session**, not a file or a service: the installer cannot create it. It is started from the dashboard
+(the **Start worker** button) and must be started again after Claude Desktop or the computer restarts, or whenever the header
+turns orange. Everything it needs (the `dashboard-queue-worker` skill and the scripts) is installed by `./install.sh`.
 
 **Start it**
 1. Click the orange **Start worker** button in the dashboard header (or run the command below).
@@ -188,14 +220,24 @@ see a session for are dropped after 2 hours.
 
 Queue entry (`move-queue.json`): `{id, action: move|archive|ping, title, requestedAt, approved?, sentAt?, toSection?, label?, fromStage?, error?}`.
 
-## 7. Settings worth knowing (top of `server.py`)
+## 7. Configuration
 
-**Azure DevOps links** (optional): set `DASHBOARD_ADO_ORG=https://dev.azure.com/<organization>` in the environment of the service
-(`Environment=` line in `~/.config/systemd/user/session-dashboard.service`, then `systemctl --user daemon-reload && systemctl --user restart session-dashboard`).
-It turns work-item numbers into links and resolves the PR of each review session with the `az` CLI. Without it the dashboard works the same but those numbers are plain text.
+Settings live in `config.json` next to `server.py` (or the file named in `$DASHBOARD_CONFIG`); every key is optional and
+comments are the keys starting with `_`. A broken file is ignored with a message in the log. Restart the service after a change.
 
-`TZ` (America/Toronto), `GAP_CAP` (15 min of activity per gap), `POLL` (60 s background snapshot), `STAGE_ALIASES` / `STAGE_LABEL`
-(section names), `WORKER_PROMPT`, the port in `__main__`. Thresholds for moods and the age dot are in `index.html`.
+| Key | Default | What |
+|---|---|---|
+| `port` | `8787` | Port of the page (`127.0.0.1` only) |
+| `timezone` | `""` | IANA name (`America/Toronto`); empty = this computer's local time. Days of the Week tab follow it |
+| `projectsDir` | `~/dev/projects` | Folder where sessions started with **+** open |
+| `adoOrg` | `""` | `https://dev.azure.com/<organization>`: work item links and PR resolution (needs `az`). Also `$DASHBOARD_ADO_ORG` |
+| `appDataDir` | `""` | Claude Desktop data folder; empty = auto-detect. Also `$DASHBOARD_APP_DIR` |
+| `sections` | six names | Your sidebar section names per stage: `review_others`, `analysis`, `po`, `dev`, `my_cr`, `completed` (lists; the first is the label) |
+| `skills` | `my-code-review`, `implement` | Skills the **+** buttons ask Claude to use |
+| `startMessages` | two sentences | Prefilled prompts; `{skill}`, `{section}`, `{n}` are replaced. Plain words: Claude Desktop neutralises a leading `/` in links |
+
+Not configurable (edit the code): thresholds of the moods and the age dot (`index.html`), `GAP_CAP` (15 min of activity per
+gap), `POLL` (60 s background snapshot), the worker prompt (`WORKER_PROMPT` in `server.py`).
 
 ## 8. Developing
 

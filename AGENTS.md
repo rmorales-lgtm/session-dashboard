@@ -8,8 +8,10 @@ Read `README.md` for the full picture; this file is what an AI session must know
 * `server.py` — Python 3 standard library only. Reads the app's files, builds the state, serves `/api/*` and `index.html`.
 * `index.html` — the whole UI in one file (CSS, JS, SVG icons). No build step, no external requests, no frameworks.
 * `queue_todo.py`, `mark_many.py`, `ping_watch.py` (+ `mark_done.py`, `mark_sent.py`) — tools for the **Queue worker** session.
-* `skills/` — `dashboard-queue-worker`, `dashboard-dev`; `install-skills.sh` symlinks them into `~/.claude/skills`.
-* Config: environment variable `DASHBOARD_ADO_ORG` (set in the systemd unit, never in the repo) enables Azure DevOps links.
+* `skills/` — `dashboard-queue-worker`, `dashboard-dev`; `install.sh` (config, skills, systemd unit) and `install-skills.sh` link them into `~/.claude/skills`.
+* `dashcfg.py` — configuration (defaults, `config.json`, env) and detection of Claude Desktop's data folder. `config.json` is the
+  user's own (git-ignored); `config.example.json` documents it. Section names, skills, time zone, folders and the Azure DevOps
+  organization belong in the config, never hard-coded in the code, docs or tests.
 * Data: `~/.local/share/session-dashboard/history.json` and `move-queue.json` (outside the repo). Service:
   `~/.config/systemd/user/session-dashboard.service` (runs `python3 -I server.py 8787`).
 

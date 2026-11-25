@@ -485,31 +485,29 @@ function render(){
 $('#tb').onclick=()=>{tab='board';$('#tb').className='on';$('#tw').className='';render()};
 $('#tw').onclick=()=>{tab='week';$('#tw').className='on';$('#tb').className='';render()};
 
-const START={
-  review:{icon:'eye',title:'Review a pull request',ph:'PR number, e.g. 38219',go:'Start review',section:'Peer code reviews',skill:'my-code-review',
-    hint:'A new session opens in your <b>projects</b> folder and asks Claude to run the <code>my-code-review</code> skill for that PR (links can\'t start slash commands, so it is worded as a request) and to file itself under Peer code reviews.',
-    msg:n=>'Use the my-code-review skill to review PR '+n+' and place this session in the "Peer code reviews" section.'},
-  implement:{icon:'code',title:'Implement a ticket',ph:'Ticket number, e.g. 70101',go:'Start implementation',section:'Development',skill:'implement',
-    hint:'A new session opens in your <b>projects</b> folder and asks Claude to run the <code>implement</code> skill for that ticket (links can\'t start slash commands, so it is worded as a request) and to file itself under Development.',
-    msg:n=>'Use the implement skill for ticket '+n+' and place this session in the "Development" section.'}
+const START_UI={
+  review:{icon:'eye',title:'Review a pull request',ph:'PR number, e.g. 1234',go:'Start review'},
+  implement:{icon:'code',title:'Implement a ticket',ph:'Ticket number, e.g. 1234',go:'Start implementation'}
 };
+const startMsg=(kind,n)=>{const c=S.start[kind];return c.template.split('{skill}').join(c.skill).split('{section}').join(c.section).split('{n}').join(n)};
+const startHint=kind=>{const c=S.start[kind];return `A new session opens in your <b>projects</b> folder and asks Claude to run the <code>${esc(c.skill)}</code> skill for that number (links can't start slash commands, so it is worded as a request) and to file itself under ${esc(c.section)}.`};
 let startKind='review';
 function openStartDialog(kind){
-  startKind=kind;const c=START[kind];
-  $('#rvh3').innerHTML=I(c.icon,16)+' '+c.title;$('#rvhint').innerHTML=c.hint;$('#rvpr').placeholder=c.ph;
+  startKind=kind;const c=START_UI[kind];
+  $('#rvh3').innerHTML=I(c.icon,16)+' '+c.title;$('#rvhint').innerHTML=startHint(kind);$('#rvpr').placeholder=c.ph;
   $('#rvgo').innerHTML=I('play',12)+' '+c.go;
   $('#rverr').textContent='';$('#rvpr').value='';
   $('#rvdlg').showModal();setTimeout(()=>$('#rvpr').focus(),30);
 }
 async function startReview(ev){
-  ev.preventDefault();const c=START[startKind];
+  ev.preventDefault();
   const n=$('#rvpr').value.replace(/^\s*#?/,'').trim();
   if(!/^\d{1,7}$/.test(n)){$('#rverr').textContent='Enter the number (digits only).';return}
   try{
     const r=await fetch('/api/review',{method:'POST',headers:{'X-Dashboard':'1','Content-Type':'application/json'},body:JSON.stringify({kind:startKind,n})});
     const j=await r.json();if(!j.ok)throw j.message;
   }catch(e){$('#rverr').textContent='Could not register: '+e;return}
-  const url='claude://code/new?folder='+encodeURIComponent(S.projectsDir||'')+'&q='+encodeURIComponent(c.msg(n));
+  const url='claude://code/new?folder='+encodeURIComponent(S.projectsDir||'')+'&q='+encodeURIComponent(startMsg(startKind,n));
   const a=document.createElement('a');a.href=url;document.body.appendChild(a);a.click();a.remove();
   $('#rvdlg').close();
 }

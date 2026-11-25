@@ -1,0 +1,12 @@
+[Unit]
+Description=Session Control dashboard for Claude Desktop sessions
+
+[Service]
+ExecStart=@PYTHON@ -I @DIR@/server.py
+Restart=on-failure
+RestartSec=3
+# Optional, instead of "adoOrg" in config.json:
+#Environment=DASHBOARD_ADO_ORG=https://dev.azure.com/<organization>
+
+[Install]
+WantedBy=default.target
